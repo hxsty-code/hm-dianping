@@ -2,6 +2,7 @@ package com.hmdp.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
+import cn.hutool.core.convert.Convert;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.LoginFormDTO;
@@ -100,39 +101,89 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             return Result.fail("验证码格式无效");
         }
 
-        // 3、从redis中获取验证码并比对
-        String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + email);
-        if (cacheCode == null || !cacheCode.equals(code)) {
-            return Result.fail("验证码错误");
+        // 3、先看这个邮箱是不是已经被锁定了：达到错误上限就直接拒绝，连通比对都不用做
+        String failKey = LOGIN_FAIL_KEY + email;
+        Integer failCount = Convert.toInt(stringRedisTemplate.opsForValue().get(failKey), 0);
+        if (failCount >= LOGIN_FAIL_MAX) {
+            return Result.fail("验证码错误次数过多，请 " + remainLockMinutes(failKey) + " 分钟后再试");
         }
 
-        // 4、验证码是一次性的：校验通过就立刻删除，防止同一个码被反复使用
-        stringRedisTemplate.delete(LOGIN_CODE_KEY + email);
+        // 4、从redis中获取验证码并比对
+        String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + email);
+        if (cacheCode == null) {
+            // 验证码不存在/已过期/已经用过。这种情况任何输入都不可能通过，
+            // 所以不算"猜错"——否则用户会因为验证码过期而被白白锁号。
+            return Result.fail("验证码已失效，请重新获取");
+        }
+        if (!cacheCode.equals(code)) {
+            // 只有"验证码确实存在、但输入对不上"才计入失败次数
+            long fails = recordFail(failKey);
+            long remain = LOGIN_FAIL_MAX - fails;
+            if (remain <= 0) {
+                return Result.fail("验证码错误次数过多，请 " + LOGIN_FAIL_TTL + " 分钟后再试");
+            }
+            return Result.fail("验证码错误，还可以尝试 " + remain + " 次");
+        }
 
-        // 5、根据邮箱查询用户，不存在则注册新用户
+        // 5、验证码是一次性的：校验通过就立刻删除，防止同一个码被反复使用
+        stringRedisTemplate.delete(LOGIN_CODE_KEY + email);
+        // 5.1 登录成功，把之前的错误次数清零
+        stringRedisTemplate.delete(failKey);
+
+        // 6、根据邮箱查询用户，不存在则注册新用户
         User user = query().eq("email", email).one();
         if (user == null){
             user = createUserWithEmail(email);
         }
 
-        // 6、保存用户到redis（只保存DTO，避免把邮箱、密码等敏感字段存进会话）
-        // 6.1 随机生成token作为登录令牌
+        // 7、保存用户到redis（只保存DTO，避免把邮箱、密码等敏感字段存进会话）
+        // 7.1 随机生成token作为登录令牌
         String token = UUID.randomUUID().toString();
-        // 6.2 将User对象转为HashMap
+        // 7.2 将User对象转为HashMap
         UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
         Map<String, Object> userMap = BeanUtil.beanToMap(userDTO, new HashMap<>(),
                 CopyOptions.create()
                         .setIgnoreNullValue(true)
                         .setFieldValueEditor((fieldName, fieldValue) -> fieldValue.toString()));
-        // 6.3 存储用户信息到redis
+        // 7.3 存储用户信息到redis
         String tokenKey = LOGIN_USER_KEY + token;
         stringRedisTemplate.opsForHash().putAll(tokenKey, userMap);
 
-        // 7、设置token的过期时间
+        // 8、设置token的过期时间
         stringRedisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.MINUTES);
 
-        // 8、返回token
+        // 9、返回token
         return Result.ok(token);
+    }
+
+    /**
+     * 记录一次验证码错误，返回累计错误次数。
+     * 过期时间只在第一次错误时设置（固定窗口，不是滑动窗口）：
+     * 从第一次错误开始算 LOGIN_FAIL_TTL 分钟，之后的重试不会把这个时间往后推，
+     * 否则用户越试锁得越久，永远出不来。
+     */
+    private long recordFail(String failKey) {
+        Long count = stringRedisTemplate.opsForValue().increment(failKey);
+        // key 没有过期时间就补一个：既覆盖"第一次失败"的正常场景，
+        // 也覆盖"INCR 成功但 EXPIRE 没来得及执行（比如进程挂掉）"导致 key 永不过期的意外，
+        // 那种情况会把用户永久锁死，比锁 10 分钟严重得多。
+        Long ttl = stringRedisTemplate.getExpire(failKey, TimeUnit.SECONDS);
+        if (ttl == null || ttl < 0) {
+            stringRedisTemplate.expire(failKey, LOGIN_FAIL_TTL, TimeUnit.MINUTES);
+        }
+        return count == null ? 1L : count;
+    }
+
+    /**
+     * 剩余锁定时间（分钟），用来提示用户。
+     * 向上取整，避免出现"请 0 分钟后再试"这种让人困惑的提示。
+     */
+    private long remainLockMinutes(String failKey) {
+        Long seconds = stringRedisTemplate.getExpire(failKey, TimeUnit.SECONDS);
+        if (seconds == null || seconds <= 0) {
+            return LOGIN_FAIL_TTL;
+        }
+        return (seconds + 59) / 60;
     }
 
     private User createUserWithEmail(String email) {

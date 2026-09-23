@@ -8,6 +8,12 @@ public class RedisConstants {
      */
     public static final String LOGIN_CODE_LIMIT_KEY = "login:code:limit:";
     public static final Long LOGIN_CODE_LIMIT_TTL = 60L;
+    /**
+     * 验证码错误次数限制：同一个邮箱连续错 LOGIN_FAIL_MAX 次，就锁定 LOGIN_FAIL_TTL 分钟
+     */
+    public static final String LOGIN_FAIL_KEY = "login:fail:";
+    public static final int LOGIN_FAIL_MAX = 5;
+    public static final Long LOGIN_FAIL_TTL = 10L;
     public static final String LOGIN_USER_KEY = "login:token:";
     public static final Long LOGIN_USER_TTL = 36000L;
 
