@@ -18,6 +18,21 @@ spring:
         max-idle: 10
         min-idle: 1
         time-between-eviction-runs: 10s
+  mail:
+    host: smtp.qq.com        # QQ邮箱的 SMTP 服务器
+    port: 465                # 465 = SSL，587 = STARTTLS
+    username: ${MAIL_USERNAME:}   # 你的QQ邮箱，例：12345@qq.com（也可以直接写死）
+    password: ${MAIL_PASSWORD:}   # 不是QQ密码，是在QQ邮箱设置里生成的「授权码」
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          connectiontimeout: 5000   # 连接/发送超时，避免SMTP卡住导致接口一直不返回
+          timeout: 5000
+          writetimeout: 5000
   jackson:
     default-property-inclusion: non_null # JSON处理时忽略非空字段
 mybatis-plus:

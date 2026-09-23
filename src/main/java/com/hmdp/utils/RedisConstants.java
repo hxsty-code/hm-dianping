@@ -2,7 +2,12 @@ package com.hmdp.utils;
 
 public class RedisConstants {
     public static final String LOGIN_CODE_KEY = "login:code:";
-    public static final Long LOGIN_CODE_TTL = 2L;
+    public static final Long LOGIN_CODE_TTL = 5L;
+    /**
+     * 验证码发送频率限制的key，同一个邮箱在 LOGIN_CODE_LIMIT_TTL 秒内只能发一次
+     */
+    public static final String LOGIN_CODE_LIMIT_KEY = "login:code:limit:";
+    public static final Long LOGIN_CODE_LIMIT_TTL = 60L;
     public static final String LOGIN_USER_KEY = "login:token:";
     public static final Long LOGIN_USER_TTL = 36000L;
 
