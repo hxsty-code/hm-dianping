@@ -163,6 +163,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
      * 否则用户越试锁得越久，永远出不来。
      */
     private long recordFail(String failKey) {
+        // 获取并增加失败次数
         Long count = stringRedisTemplate.opsForValue().increment(failKey);
         // key 没有过期时间就补一个：既覆盖"第一次失败"的正常场景，
         // 也覆盖"INCR 成功但 EXPIRE 没来得及执行（比如进程挂掉）"导致 key 永不过期的意外，
@@ -205,6 +206,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
      * 因为 A@QQ.com 和 a@qq.com 是同一个人，不统一的话会建出两个账号。
      */
     private String normalizeEmail(String email) {
+        // 去掉首尾空格并转小写（trim: 去掉首尾空格 ，lowerCase: 转小写）
         return email == null ? null : email.trim().toLowerCase();
     }
 }
