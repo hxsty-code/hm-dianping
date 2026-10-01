@@ -15,6 +15,9 @@ import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.LOGIN_USER_KEY;
 
+/**
+ * 刷新用户登录状态的拦截器
+ */
 public class RefreshTokenInterceptor implements HandlerInterceptor {
 
     private StringRedisTemplate stringRedisTemplate;
@@ -23,6 +26,14 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         this.stringRedisTemplate = stringRedisTemplate;
     }
 
+    /**
+     * 在请求处理之前执行
+     * @param request 请求对象
+     * @param response 响应对象
+     * @param handler 处理器
+     * @return 如果返回true，表示当前请求可以继续处理；如果返回false，表示当前请求被拦截，不会继续处理
+     * @throws Exception
+     */
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -47,6 +58,14 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         return true;
     }
 
+    /**
+     * 在请求处理之后，视图渲染之前执行
+     * @param request 请求对象
+     * @param response 响应对象
+     * @param handler 处理器
+     * @param ex 异常对象
+     * @throws Exception
+     */
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
         // 1、移除用户
