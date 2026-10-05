@@ -63,6 +63,13 @@
             <artifactId>hutool-all</artifactId>
             <version>5.7.17</version>
         </dependency>
+
+        <!-- AOP 支持：aspectjrt 不含 org.aspectj.lang.annotation.* 注解类，
+             需 spring-boot-starter-aop 引入 aspectjweaver，@EnableAspectJAutoProxy 才能正常加载 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

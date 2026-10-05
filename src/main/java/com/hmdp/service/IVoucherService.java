@@ -26,5 +26,4 @@ public interface IVoucherService extends IService<Voucher> {
      * @param voucher
      */
     void addSeckillVoucher(Voucher voucher);
-
 }
