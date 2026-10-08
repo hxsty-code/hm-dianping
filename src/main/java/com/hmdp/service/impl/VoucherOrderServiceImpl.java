@@ -8,8 +8,10 @@ import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.utils.RedisIdWorker;
+import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +35,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private RedisIdWorker redisIdWorker;
 
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
     /**
      * 秒杀优惠券（入口方法：前置校验 + 加锁 + 调代理）
      * 注意：此方法不加 @Transactional，事务在 createVoucherOrder 里
@@ -55,13 +60,25 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("优惠券库存不足！");
         }
 
-        // 4、加锁保证一人一单（锁必须在事务外层）
+        // 4、加锁保证一人一单
         Long userId = UserHolder.getUser().getId();
-        // intern() 保证同一 userId 拿到常量池里同一个字符串对象，锁才锁得住
-        synchronized (userId.toString().intern()) {
-            // 必须通过代理对象调用，否则 @Transactional 失效
+        // 4.1 创建锁对象
+        SimpleRedisLock lock = new SimpleRedisLock("lock:user:" + userId, stringRedisTemplate);
+        // 4.2 尝试获取锁
+        boolean isLock = lock.tryLock(1200);
+        // 4.3 判断是否获取成功
+        if(!isLock){
+            return Result.fail("请勿重复下单！");
+        }
+        try {
+            // 5、获取代理对象（事务）
             IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
             return proxy.createVoucherOrder(voucherId);
+        } catch (IllegalStateException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 6、释放锁
+            lock.unlock();
         }
     }
 
