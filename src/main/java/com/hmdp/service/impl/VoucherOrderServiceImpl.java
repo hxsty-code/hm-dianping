@@ -63,7 +63,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         // 4、加锁保证一人一单
         Long userId = UserHolder.getUser().getId();
         // 4.1 创建锁对象
-        SimpleRedisLock lock = new SimpleRedisLock("lock:user:" + userId, stringRedisTemplate);
+        SimpleRedisLock lock = new SimpleRedisLock("order:" + userId, stringRedisTemplate);
         // 4.2 尝试获取锁
         boolean isLock = lock.tryLock(1200);
         // 4.3 判断是否获取成功
