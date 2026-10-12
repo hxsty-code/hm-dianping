@@ -27,7 +27,8 @@ public class SimpleRedisLock implements ILock {
      */
     @Override
     public boolean tryLock(long timeoutSec) {
-        // 获取线程标识
+        // 获取线程标识（防止锁误删的关键）
+        // 为什么是UUID + 线程ID？因为线程 ID 只在单个 JVM 进程内唯一。在多线程环境下，不同线程可能具有相同的 ID。
         String threadId = ID_PREFIX + Thread.currentThread().getId();
 
         // 尝试获取锁
