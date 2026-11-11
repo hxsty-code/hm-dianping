@@ -22,8 +22,19 @@ public class RedisConstants {
     public static final Long CACHE_SHOP_TTL = 30L;
     public static final String CACHE_SHOP_KEY = "cache:shop:";
 
+    /**
+     * 逻辑过期方案专用缓存key：与 CACHE_SHOP_KEY 物理隔离，
+     * 避免“纯 Shop JSON”和“RedisData 包装 JSON”两种结构互相覆盖导致 NPE / 空壳对象
+     */
+    public static final String CACHE_SHOP_LOGICAL_KEY = "cache:shop:logical:";
+
     public static final String LOCK_SHOP_KEY = "lock:shop:";
     public static final Long LOCK_SHOP_TTL = 10L;
+
+    /**
+     * 逻辑过期方案专用互斥锁key：与 LOCK_SHOP_KEY 隔离，避免两套方案争同一把锁
+     */
+    public static final String LOCK_SHOP_LOGICAL_KEY = "lock:shop:logical:";
 
     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
     public static final String BLOG_LIKED_KEY = "blog:liked:";

@@ -112,7 +112,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             Shop shop = JSONUtil.toBean(shopJson, Shop.class);
             return Result.ok(shop);
         }
-
+        // "" null \t \n \r
         // 3、判断缓存中是否存在空值
         if(shopJson != null){       // 第二次访问："" != null，直接返回失败，不再查询数据库
             return Result.fail("店铺不存在");
@@ -132,8 +132,9 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     /**
      * 根据id查询商铺信息
      * 【缓存击穿演示：逻辑过期方案】
-     * 前提：热点key已提前预热（见 saveShop2Redis），redis中不设置TTL，
-     * 是否“过期”由数据里的 expireTime 逻辑判断——key永不物理消失，因此永远不会缓存miss。
+     * 前提：热点key已提前预热（见 saveShop2Redis），缓存使用独立前缀 cache:shop:logical:{id}，
+     * 与 queryById / queryWithPassThrough 使用的 cache:shop:{id} 物理隔离，两种value结构互不污染；
+     * 且redis中不设置TTL，是否“过期”由数据里的 expireTime 逻辑判断——key永不物理消失，因此永远不会缓存miss。
      * 流程：命中后未过期直接返回；已过期则尝试获取互斥锁，
      * 拿到锁的线程交给独立线程异步重建缓存，自己立即返回旧数据；
      * 没拿到锁的线程也直接返回旧数据——全程不阻塞、高可用。
@@ -141,8 +142,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
      * @return 商铺信息（重建瞬间可能返回稍旧的版本）
      */
     public Result queryWithLogicalExpire(Long id) {
-        // 1、从redis查询商铺缓存
-        String shopJson = stringRedisTemplate.opsForValue().get(CACHE_SHOP_KEY + id);
+        // 1、从redis查询商铺缓存（逻辑过期专用key，value一定是RedisData包装格式）
+        String shopJson = stringRedisTemplate.opsForValue().get(CACHE_SHOP_LOGICAL_KEY + id);
         if(StrUtil.isBlank(shopJson)){
             // 2、未命中：逻辑过期方案假设热点数据已预热，正常不应miss，这里兜底
             return Result.fail("店铺不存在");
@@ -160,7 +161,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
 
         // 5、已过期，尝试获取互斥锁，只放行一个线程去重建缓存
-        String lockKey = LOCK_SHOP_KEY + id;
+        String lockKey = LOCK_SHOP_LOGICAL_KEY + id;
         boolean isLock = tryLock(lockKey);
         if(isLock){
             // 5.1、获取锁成功：开启独立线程异步重建缓存
@@ -181,8 +182,9 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     }
 
     /**
-     * 缓存预热/重建：把商铺数据写入redis，value中携带逻辑过期时间。
+     * 缓存预热/重建：把商铺数据写入redis（逻辑过期专用key），value中携带逻辑过期时间。
      * 注意：不设置TTL，key不会物理消失，“过期”只由数据里的 expireTime 控制。
+     * 独立前缀保证这里写入的 RedisData 结构不会被普通缓存覆盖。
      * 演示前先调用它给热点key做预热。
      * @param id 商铺id
      * @param expireSeconds 逻辑过期时间（秒）
@@ -201,7 +203,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         redisData.setData(shop);
         redisData.setExpireTime(LocalDateTime.now().plusSeconds(expireSeconds));
         // 4、写入redis（不带TTL）
-        stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(redisData));
+        stringRedisTemplate.opsForValue().set(CACHE_SHOP_LOGICAL_KEY + id, JSONUtil.toJsonStr(redisData));
     }
 
     /**
@@ -251,8 +253,10 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 1、更新数据库
         updateById(shop);
 
-        // 2、删除缓存
+        // 2、删除缓存（普通缓存与逻辑过期缓存都要删，否则逻辑过期方案会一直返回旧值）
         stringRedisTemplate.delete(CACHE_SHOP_KEY + shopId);
+        stringRedisTemplate.delete(CACHE_SHOP_LOGICAL_KEY + shopId);
+        // 说明：逻辑过期缓存被删后需要重新预热，否则该方案会走miss兜底
         return Result.ok();
     }
 

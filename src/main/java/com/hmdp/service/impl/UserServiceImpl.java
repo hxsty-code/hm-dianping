@@ -103,7 +103,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
         // 3、先看这个邮箱是不是已经被锁定了：达到错误上限就直接拒绝，连通比对都不用做
         String failKey = LOGIN_FAIL_KEY + email;
-        Integer failCount = Convert.toInt(stringRedisTemplate.opsForValue().get(failKey), 0);
+        Integer failCount = Convert.toInt(stringRedisTemplate.opsForValue().get(failKey),0);
         if (failCount >= LOGIN_FAIL_MAX) {
             return Result.fail("验证码错误次数过多，请 " + remainLockMinutes(failKey) + " 分钟后再试");
         }
@@ -163,13 +163,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
      * 否则用户越试锁得越久，永远出不来。
      */
     private long recordFail(String failKey) {
-        // 获取并增加失败次数
+        // 增加失败次数并获取
         Long count = stringRedisTemplate.opsForValue().increment(failKey);
         // key 没有过期时间就补一个：既覆盖"第一次失败"的正常场景，
         // 也覆盖"INCR 成功但 EXPIRE 没来得及执行（比如进程挂掉）"导致 key 永不过期的意外，
         // 那种情况会把用户永久锁死，比锁 10 分钟严重得多。
         Long ttl = stringRedisTemplate.getExpire(failKey, TimeUnit.SECONDS);
+        // 在 Redis 的约定里，负数不是"时间"，而是一种特殊状态码。-1 和 -2 分别代表"没设过期"和"不存在"
         if (ttl == null || ttl < 0) {
+            // 从第一次错误时设置过期时间
             stringRedisTemplate.expire(failKey, LOGIN_FAIL_TTL, TimeUnit.MINUTES);
         }
         return count == null ? 1L : count;
