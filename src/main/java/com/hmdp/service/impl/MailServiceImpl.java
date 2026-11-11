@@ -32,11 +32,12 @@ public class MailServiceImpl implements IMailService {
     @Override
     public boolean sendLoginCode(String email, String code) {
         try {
+            // 创建一封装载邮件的“空邮件对象”
             MimeMessage message = mailSender.createMimeMessage();
-            // 第二个参数 false 表示不带附件，第三个参数指定编码，避免中文标题乱码
+            // 给空邮件对象配一个写信助手（第二个参数 false 表示不带附件，第三个参数指定编码，避免中文标题乱码）
             MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
-            helper.setFrom(from);
-            helper.setTo(email);
+            helper.setFrom(from);   // 发件人
+            helper.setTo(email);    // 收件人
             helper.setSubject("黑马点评登录验证码");
             helper.setText("您的登录验证码是 " + code + "，" + LOGIN_CODE_TTL + " 分钟内有效，请勿泄露给他人。", false);
             mailSender.send(message);

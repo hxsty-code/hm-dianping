@@ -12,7 +12,6 @@ import com.hmdp.utils.UserHolder;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
-import org.springframework.beans.BeanUtils;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -26,8 +25,6 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -53,13 +50,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @Resource
     private RedissonClient redissonClient;
-
-    /**
-     * 秒杀优惠券（入口方法：前置校验 + 加锁 + 调代理）
-     * 注意：此方法不加 @Transactional，事务在 createVoucherOrder 里
-     * @param voucherId
-     * @return
-     */
 
     // 创建脚本对象
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
@@ -103,7 +93,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     VoucherOrder voucherOrder = BeanUtil.fillBeanWithMap(values, new VoucherOrder(), true);
                     // 4、如果获取成功，创建订单
                     handleVoucherOrder(voucherOrder);
-                    // 5、ACK确认 SACK stream.orders g1 id
+                    // 5、ACK确认 XACK stream.orders g1 id
                     stringRedisTemplate.opsForStream().acknowledge(queueName, "g1", record.getId());
                 } catch (Exception e) {
                     log.error("订单处理异常", e);
@@ -112,6 +102,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             }
         }
 
+        /**
+         * 处理pending-list中的订单
+         */
         private void handlePendingList() {
             while (true) {
                 try {
@@ -172,6 +165,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     // 创建事务代理对象
     private IVoucherOrderService proxy;
+
+    /**
+     * 秒杀优惠券（入口方法：前置校验 + 加锁 + 调代理）
+     * @param voucherId
+     * @return
+     */
     @Override
     public Result seckillVoucher(Long voucherId) {
         // 获取用户

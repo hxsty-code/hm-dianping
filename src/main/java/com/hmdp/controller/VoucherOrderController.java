@@ -25,7 +25,7 @@ public class VoucherOrderController {
     private IVoucherOrderService voucherOrderService;
 
     /**
-     * 秒杀优惠券
+     * 秒杀下单
      * @param voucherId
      * @return
      */

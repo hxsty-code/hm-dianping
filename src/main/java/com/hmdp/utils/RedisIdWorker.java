@@ -29,7 +29,7 @@ public class RedisIdWorker {
         // 2.1、获取当前日期，精确到天
         String date = now.format(DateTimeFormatter.ofPattern("yyyy:MM:dd"));
         // 2.2、自增长
-        Long count = stringRedisTemplate.opsForValue().increment("icr" + keyPrefix + ":" + date);
+        Long count = stringRedisTemplate.opsForValue().increment("icr:" + keyPrefix + ":" + date);
 
         // 拼接并返回
         return (timestamp << COUNT_BITS) | count;
