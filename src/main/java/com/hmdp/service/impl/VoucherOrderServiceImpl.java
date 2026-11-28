@@ -11,7 +11,9 @@ import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
-import org.springframework.aop.framework.AopContext;
+// import org.springframework.aop.framework.AopContext;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.RedisCallback;
@@ -202,7 +204,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
-    // 创建事务代理对象
+    // 创建事务代理对象（自身代理）：Spring 注入的是织入了事务的代理对象，启动时就可用，不再依赖"请求先来过"
+    // @Lazy：注入一个延迟解析的占位代理，第一次调用方法时才去容器里取真正的（织入了事务的）代理
+    @Autowired
+    @Lazy
     private IVoucherOrderService proxy;
 
     /**
@@ -216,8 +221,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         Long userId = UserHolder.getUser().getId();
         // 获取订单id
         long orderId = redisIdWorker.nextId("order");
-        // 获取代理对象（事务）：必须在执行lua之前完成——lua中会将订单入队，消费线程可能立即取走并读取proxy
-        proxy = (IVoucherOrderService) AopContext.currentProxy();
+//        // 获取代理对象（事务）：必须在执行lua之前完成——lua中会将订单入队，消费线程可能立即取走并读取proxy
+//        proxy = (IVoucherOrderService) AopContext.currentProxy();     @Lazy 完成了代理对象的创建
         // 1、执行lua脚本
         Long result = stringRedisTemplate.execute(
                 SECKILL_SCRIPT,
@@ -274,7 +279,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     /**
      * 创建订单（一人一单 + 扣库存 + 下单，事务范围）
-     * 必须通过代理对象调用（AopContext.currentProxy()）
+     * 必须通过代理对象调用（self 注入的 proxy 字段）
      *
      * @param voucherOrder
      */
